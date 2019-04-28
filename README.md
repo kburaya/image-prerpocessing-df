@@ -1,4 +1,4 @@
-# MBTI Server Extractor 
+# MBTI Detection REST-Server
 
 REST Сервер для определения MBTI по картинке. 
 Для определения используется следующий набор признаков:

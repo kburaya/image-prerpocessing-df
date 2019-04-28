@@ -1,0 +1,8 @@
+colorgram
+opencv
+keras
+opencv-text-detection
+imutils
+flask
+numpy
+
