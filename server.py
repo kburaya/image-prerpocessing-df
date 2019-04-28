@@ -4,6 +4,7 @@ import time
 from os import listdir
 from os.path import isfile, join
 
+import pickle
 import colorgram
 import cv2
 import imutils
@@ -18,10 +19,11 @@ from scipy import ndimage as ndi
 from skimage import color
 from skimage import measure
 
-# construct the argument parser and parse the arguments
-ap = argparse.ArgumentParser()
-ap.add_argument("-f", "--folder", required=False, help="path to the input folder")
-args = vars(ap.parse_args())
+from flask import Flask
+from flask_restful import Api, Resource, reqparse
+
+app = Flask(__name__)
+api = Api(app)
 
 
 def image_colorfulness(image):
@@ -134,6 +136,52 @@ def text_detect(image, east, min_confidence, width, height):
     return [drawpolys_count, drawrects_count]
 
 
+class ImagePath(Resource):
+    def get_mbti(self, imagename):
+
+        imagepath = 'tmp/{}'.format(imagename)
+
+        x = extractor.extract_image(False, imagepath, False)
+        x = np.array(x)
+        x = x.reshape(1, -1)
+        filename = 'models/I_E.model'
+        model = pickle.load(open(filename, 'rb'))
+        ie_pred = model.predict_proba(x)
+        ie_pred = ie_pred[0][0]
+
+        filename = 'models/S_N.model'
+        model = pickle.load(open(filename, 'rb'))
+        sn_pred = model.predict_proba(x)
+        sn_pred = sn_pred[0][0]
+
+
+        filename = 'models/T_F.model'
+        model = pickle.load(open(filename, 'rb'))
+        tf_pred = model.predict_proba(x)
+        tf_pred = tf_pred[0][0]
+
+
+        filename = 'models/J_P.model'
+        model = pickle.load(open(filename, 'rb'))
+        jp_pred = model.predict_proba(x)
+        jp_pred = jp_pred[0][0]
+
+
+        return [ie_pred, sn_pred, tf_pred, jp_pred]
+
+    def get(self, imgname):
+        mbti = self.get_mbti(imgname)
+
+        if mbti != None:
+            mbti = {
+                'status': 'OK',
+                'mbti': {'psy_type': mbti}
+            }
+        else:
+            mbti = {'status': 'ERROR'}
+        print(mbti)
+        return mbti
+
 class Extractor:
     BATCH_SIZE = 10
     model = ResNet50(weights='imagenet')
@@ -156,8 +204,13 @@ class Extractor:
 
         return
 
-    def extract_image(self, folder, img_path):
-        path = '{}/{}'.format(folder, img_path)
+    def extract_image(self, folder, img_path, save=True):
+        image_feature_vector = []
+        if folder:
+            path = '{}/{}'.format(folder, img_path)
+        else:
+            path = img_path
+
         print ('Process {}'.format(path))
         # colors features
         colors = colorgram.extract(path, 6)
@@ -165,41 +218,26 @@ class Extractor:
         for image_color in colors:
             colors_features.extend([image_color.rgb.r,image_color.rgb.g, image_color.rgb.b])
 
-        with open('csvs/color_features.csv', 'a') as f:
-            feature_str = ', '.join(str(x) for x in colors_features)
-            f.writelines(feature_str)
-            f.writelines('\n')
+        if save:
+            with open('csvs/color_features.csv', 'a') as f:
+                feature_str = ', '.join(str(x) for x in colors_features)
+                f.writelines(feature_str)
+                f.writelines('\n')
+        else:
+            image_feature_vector.extend(colors_features)
 
-        # shape features
-        im = ndi.imread(path)
-        gimg = color.colorconv.rgb2grey(im)
-        contours = measure.find_contours(gimg, 0.8)
-
-        with open('csvs/shape_feature.csv', 'a') as f:
-            f.writelines(str(len(contours)))
-            f.writelines('\n')
-
-        img = image.load_img(path, target_size=(224, 224))
-        x = image.img_to_array(img)
-        x = np.expand_dims(x, axis=0)
-        x = preprocess_input(x)
-
-        preds = self.model.predict(x)
-        preds = preds[0]
-
-        with open('csvs/object_features.csv', 'a') as f:
-            feature_str = ','.join(str(x) for x in preds)
-            f.writelines(feature_str)
-            f.writelines('\n')
 
         # colorfulness
         img = cv2.imread(path)
         img = imutils.resize(img, width=250)
         C = image_colorfulness(img)
 
-        with open('csvs/colorfulness_feature.csv', 'a') as f:
-            f.writelines(str(C))
-            f.writelines('\n')
+        if save:
+            with open('csvs/colorfulness_feature.csv', 'a') as f:
+                f.writelines(str(C))
+                f.writelines('\n')
+        else:
+            image_feature_vector.extend([C])
 
 
         # face detection
@@ -211,23 +249,32 @@ class Extractor:
 
         faces = facecascade.detectMultiScale(imgtest, scaleFactor=1.2, minNeighbors=5)
 
-        with open('csvs/face_feature.csv', 'a') as f:
-            f.writelines(str(len(faces)))
-            f.writelines('\n')
+        if save:
+            with open('csvs/face_feature.csv', 'a') as f:
+                f.writelines(str(len(faces)))
+                f.writelines('\n')
+        else:
+            image_feature_vector.extend([C])
 
         texts = text_detect(path, 'frozen_east_text_detection.pb', 0.5, 320, 320)
-        with open('csvs/text_feature.csv', 'a') as f:
-            f.writelines('{}, {}'.format(str(texts[0]), str(texts[1])))
-            f.writelines('\n')
+        if save:
+            with open('csvs/text_feature.csv', 'a') as f:
+                f.writelines('{}, {}'.format(str(texts[0]), str(texts[1])))
+                f.writelines('\n')
+        else:
+            image_feature_vector.extend([texts[0], texts[1]])
 
         with open('csvs/processed_files.csv', 'a') as f:
             f.writelines(str(img_path))
             f.writelines('\n')
 
+        if not save:
+            return image_feature_vector
 
-        return
+extractor = Extractor()
+api.add_resource(ImagePath, "/image/<string:imgname>")
+app.run(debug=True)
+img = ImagePath()
+# img.get('/Users/k.buraya/Desktop/cat.jpg')
 
 
-if __name__ == "__main__":
-    extractor = Extractor()
-    extractor.extract_folder(args['folder'])
