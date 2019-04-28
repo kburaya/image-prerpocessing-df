@@ -148,39 +148,47 @@ class ImagePath(Resource):
         model = pickle.load(open(filename, 'rb'))
         ie_pred = model.predict_proba(x)
         ie_pred = ie_pred[0][0]
+        IE = 'I' if ie_pred <= 0.5 else 'E'
 
         filename = 'models/S_N.model'
         model = pickle.load(open(filename, 'rb'))
         sn_pred = model.predict_proba(x)
         sn_pred = sn_pred[0][0]
+        SN = 'S' if sn_pred <= 0.5 else 'N'
 
 
         filename = 'models/T_F.model'
         model = pickle.load(open(filename, 'rb'))
         tf_pred = model.predict_proba(x)
         tf_pred = tf_pred[0][0]
+        TF = 'T' if tf_pred <= 0.5 else 'F'
 
 
         filename = 'models/J_P.model'
         model = pickle.load(open(filename, 'rb'))
         jp_pred = model.predict_proba(x)
         jp_pred = jp_pred[0][0]
+        JP = 'J' if jp_pred <= 0.5 else 'P'
 
+        mbti = {
+            'status': 'OK',
+            'mbti': {'psy_type': '{}{}{}{}'.format(IE, SN, TF, JP),
+                     'I_E': ie_pred,
+                     'S_N': sn_pred,
+                     'T_F': tf_pred,
+                     'J_P': jp_pred}
+        }
 
-        return [ie_pred, sn_pred, tf_pred, jp_pred]
+        return mbti
 
     def get(self, imgname):
         mbti = self.get_mbti(imgname)
 
         if mbti != None:
-            mbti = {
-                'status': 'OK',
-                'mbti': {'psy_type': mbti}
-            }
+            return mbti
         else:
-            mbti = {'status': 'ERROR'}
-        print(mbti)
-        return mbti
+            return {'status': 'ERROR'}
+
 
 class Extractor:
     BATCH_SIZE = 10
