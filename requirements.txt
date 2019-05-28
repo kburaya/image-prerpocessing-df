@@ -1,7 +1,6 @@
-colorgram
-opencv
+colorgram.py
+opencv-python
 keras
-opencv-text-detection
 imutils
 flask
 numpy
