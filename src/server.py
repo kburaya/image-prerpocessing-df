@@ -1,26 +1,30 @@
 # import the necessary packages
 import argparse
+import pickle
+import sys
 import time
 from os import listdir
-from os.path import isfile, join
+from os.path import isfile
+from os.path import join
 
-import pickle
-import colorgram
-import cv2
 import imutils
 import numpy as np
+from flask import Flask
+from flask_restful import Api
+from flask_restful import Resource
+from flask_restful import reqparse
 from keras.applications.resnet50 import ResNet50
 from keras.applications.resnet50 import preprocess_input
 from keras.preprocessing import image
 from nms import nms
+from scipy import ndimage as ndi
+
+import colorgram
+import cv2
 from opencv_text_detection import utils
 from opencv_text_detection.decode import decode
-from scipy import ndimage as ndi
 from skimage import color
 from skimage import measure
-
-from flask import Flask
-from flask_restful import Api, Resource, reqparse
 
 app = Flask(__name__)
 api = Api(app)
@@ -139,32 +143,32 @@ def text_detect(image, east, min_confidence, width, height):
 class ImagePath(Resource):
     def get_mbti(self, imagename):
 
-        imagepath = 'tmp/{}'.format(imagename)
+        imagepath = '/tmp/image-preprocessing/'
 
-        x = extractor.extract_image(False, imagepath, False)
+        x = extractor.extract_image(imagepath, imagename, False)
         x = np.array(x)
         x = x.reshape(1, -1)
-        filename = 'models/I_E.model'
+        filename = '../models/I_E.model'
         model = pickle.load(open(filename, 'rb'))
         ie_pred = model.predict_proba(x)
         ie_pred = ie_pred[0][0]
         IE = 'I' if ie_pred <= 0.5 else 'E'
 
-        filename = 'models/S_N.model'
+        filename = '../models/S_N.model'
         model = pickle.load(open(filename, 'rb'))
         sn_pred = model.predict_proba(x)
         sn_pred = sn_pred[0][0]
         SN = 'S' if sn_pred <= 0.5 else 'N'
 
 
-        filename = 'models/T_F.model'
+        filename = '../models/T_F.model'
         model = pickle.load(open(filename, 'rb'))
         tf_pred = model.predict_proba(x)
         tf_pred = tf_pred[0][0]
         TF = 'T' if tf_pred <= 0.5 else 'F'
 
 
-        filename = 'models/J_P.model'
+        filename = '../models/J_P.model'
         model = pickle.load(open(filename, 'rb'))
         jp_pred = model.predict_proba(x)
         jp_pred = jp_pred[0][0]
@@ -279,10 +283,13 @@ class Extractor:
         if not save:
             return image_feature_vector
 
-extractor = Extractor()
-api.add_resource(ImagePath, "/image/<string:imgname>")
-app.run(debug=True)
-img = ImagePath()
-# img.get('/Users/k.buraya/Desktop/cat.jpg')
 
-
+if len(sys.argv) == 1 or sys.argv[1] not in ['prefetch', 'run']:
+    print("Run {} prefetch|run", sys.argv[0])
+    sys.exit(1)
+elif sys.argv[1] == 'run':
+    extractor = Extractor()
+    api.add_resource(ImagePath, "/image/<string:imgname>")
+    app.run(host='0.0.0.0')
+else:
+    Extractor()
