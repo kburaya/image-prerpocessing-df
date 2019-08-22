@@ -1,7 +1,10 @@
-colorgram.py
-opencv-python
-keras
-imutils
-flask
-numpy
-
+nms==0.1.6
+colorgram.py==1.2.0
+Flask==1.1.1
+imutils==0.5.3
+Keras==2.2.5
+opencv-python==4.1.0.25
+scikit-image==0.15.0
+tensorboard==1.14.0
+tensorflow==1.14.0
+flask_restful==0.3.7
