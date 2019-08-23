@@ -6,13 +6,14 @@ import argparse
 import os
 import time
 
-import cv2
-from nms import nms
 import numpy as np
+from nms import nms
 
+import cv2
 from opencv_text_detection import utils
 from opencv_text_detection.decode import decode
-from opencv_text_detection.draw import drawPolygons, drawBoxes
+from opencv_text_detection.draw import drawBoxes
+from opencv_text_detection.draw import drawPolygons
 
 
 def text_detection(image, east, min_confidence, width, height):
@@ -133,7 +134,7 @@ def text_detection_command():
     ap = argparse.ArgumentParser()
     ap.add_argument("-i", "--image", type=str,
         help="path to input image")
-    ap.add_argument("-east", "--east", type=str, default=os.path.join(os.path.dirname(os.path.realpath(__file__)), 'frozen_east_text_detection.pb'),
+    ap.add_argument("-east", "--east", type=str, default=os.path.join(os.path.dirname(os.path.realpath(__file__)), '../../models/frozen_east_text_detection.pb'),
         help="path to input EAST text detector")
     ap.add_argument("-c", "--min-confidence", type=float, default=0.5,
         help="minimum probability required to inspect a region")
