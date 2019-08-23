@@ -25,6 +25,7 @@ from opencv_text_detection import utils
 from opencv_text_detection.decode import decode
 from skimage import color
 from skimage import measure
+from waitress import serve
 
 app = Flask(__name__)
 api = Api(app)
@@ -256,8 +257,8 @@ class Extractor:
         img = cv2.imread(path, cv2.IMREAD_COLOR)
         imgtest1 = img.copy()
         imgtest = cv2.cvtColor(imgtest1, cv2.COLOR_BGR2GRAY)
-        facecascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
-        eye_cascade = cv2.CascadeClassifier('haarcascade_eye.xml')
+        facecascade = cv2.CascadeClassifier('../models/haarcascade_frontalface_default.xml')
+        eye_cascade = cv2.CascadeClassifier('../models/haarcascade_eye.xml')
 
         faces = facecascade.detectMultiScale(imgtest, scaleFactor=1.2, minNeighbors=5)
 
@@ -268,7 +269,7 @@ class Extractor:
         else:
             image_feature_vector.extend([C])
 
-        texts = text_detect(path, 'frozen_east_text_detection.pb', 0.5, 320, 320)
+        texts = text_detect(path, '../models/frozen_east_text_detection.pb', 0.5, 320, 320)
         if save:
             with open('csvs/text_feature.csv', 'a') as f:
                 f.writelines('{}, {}'.format(str(texts[0]), str(texts[1])))
@@ -276,9 +277,9 @@ class Extractor:
         else:
             image_feature_vector.extend([texts[0], texts[1]])
 
-        with open('csvs/processed_files.csv', 'a') as f:
-            f.writelines(str(img_path))
-            f.writelines('\n')
+        # with open('csvs/processed_files.csv', 'a') as f:
+        #    f.writelines(str(img_path))
+        #    f.writelines('\n')
 
         if not save:
             return image_feature_vector
@@ -290,6 +291,6 @@ if len(sys.argv) == 1 or sys.argv[1] not in ['prefetch', 'run']:
 elif sys.argv[1] == 'run':
     extractor = Extractor()
     api.add_resource(ImagePath, "/image/<string:imgname>")
-    app.run(host='0.0.0.0')
+    serve(app, host='0.0.0.0', port=5000)
 else:
     Extractor()
