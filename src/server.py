@@ -18,6 +18,7 @@ from keras.applications.resnet50 import preprocess_input
 from keras.preprocessing import image
 from nms import nms
 from scipy import ndimage as ndi
+from waitress import serve
 
 import colorgram
 import cv2
@@ -25,7 +26,6 @@ from opencv_text_detection import utils
 from opencv_text_detection.decode import decode
 from skimage import color
 from skimage import measure
-from waitress import serve
 
 app = Flask(__name__)
 api = Api(app)
@@ -285,12 +285,15 @@ class Extractor:
             return image_feature_vector
 
 
-if len(sys.argv) == 1 or sys.argv[1] not in ['prefetch', 'run']:
+extractor = Extractor()
+
+if len(sys.argv) == 1 or sys.argv[1] not in ['prefetch', 'run', 'dev']:
     print("Run {} prefetch|run", sys.argv[0])
     sys.exit(1)
 elif sys.argv[1] == 'run':
     extractor = Extractor()
     api.add_resource(ImagePath, "/image/<string:imgname>")
     serve(app, host='0.0.0.0', port=5000)
-else:
-    Extractor()
+elif sys.argv[1] == 'dev':
+    api.add_resource(ImagePath, "/image/<string:imgname>")
+    app.run(host='0.0.0.0', port=5000, debug=True)
