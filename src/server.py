@@ -1,5 +1,4 @@
 # import the necessary packages
-import argparse
 import pickle
 import sys
 import time
@@ -12,7 +11,6 @@ import numpy as np
 from flask import Flask
 from flask_restful import Api
 from flask_restful import Resource
-from flask_restful import reqparse
 from keras.applications.resnet50 import ResNet50
 from keras.applications.resnet50 import preprocess_input
 from keras.preprocessing import image
@@ -53,7 +51,7 @@ def image_colorfulness(image):
     return stdRoot + (0.3 * meanRoot)
 
 
-def text_detect(image, east, min_confidence, width, height):
+def text_detect(image, min_confidence, width, height):
     # load the input image and grab the image dimensions
     image = cv2.imread(image)
     orig = image.copy()
@@ -74,11 +72,12 @@ def text_detect(image, east, min_confidence, width, height):
     # second can be used to derive the bounding box coordinates of text
     layerNames = [
         "feature_fusion/Conv_7/Sigmoid",
-        "feature_fusion/concat_3"]
+        "feature_fusion/concat_3"
+    ]
 
     # load the pre-trained EAST text detector
     #     print("[INFO] loading EAST text detector...")
-    net = cv2.dnn.readNet(east)
+    net = text_model
 
     # construct a blob from the image and then perform a forward pass of
     # the model to obtain the two output layer sets
@@ -111,10 +110,8 @@ def text_detect(image, east, min_confidence, width, height):
 
     for i, function in enumerate(functions):
 
-        start = time.time()
         indicies = nms.boxes(rects, confidences, nms_function=function, confidence_threshold=confidenceThreshold,
                              nsm_threshold=nmsThreshold)
-        end = time.time()
 
         indicies = np.array(indicies).reshape(-1)
 
@@ -140,54 +137,58 @@ def text_detect(image, east, min_confidence, width, height):
 
     return [drawpolys_count, drawrects_count]
 
+ie_model = pickle.load(open('../models/I_E.model', 'rb'))
+sn_model = pickle.load(open('../models/S_N.model', 'rb'))
+tf_model = pickle.load(open('../models/T_F.model', 'rb'))
+jp_model = pickle.load(open('../models/J_P.model', 'rb'))
+facecascade = cv2.CascadeClassifier('../models/haarcascade_frontalface_default.xml')
+eye_cascade = cv2.CascadeClassifier('../models/haarcascade_eye.xml')
+text_model = cv2.dnn.readNet('../models/frozen_east_text_detection.pb')
+
 
 class ImagePath(Resource):
     def get_mbti(self, imagename):
 
-        imagepath = '/tmp/image-preprocessing/'
+        imagepath = f'/tmp/image-preprocessing/{imagename}'
 
-        x = extractor.extract_image(imagepath, imagename, False)
-        x = np.array(x)
-        x = x.reshape(1, -1)
-        filename = '../models/I_E.model'
-        model = pickle.load(open(filename, 'rb'))
-        ie_pred = model.predict_proba(x)
-        ie_pred = ie_pred[0][0]
-        IE = 'I' if ie_pred <= 0.5 else 'E'
+        vectors = extractor.extract_folder(imagepath)
+        results = []
+        for vector in vectors:
+            try:
+                x = np.array(vector).reshape(1, -1)
 
-        filename = '../models/S_N.model'
-        model = pickle.load(open(filename, 'rb'))
-        sn_pred = model.predict_proba(x)
-        sn_pred = sn_pred[0][0]
-        SN = 'S' if sn_pred <= 0.5 else 'N'
+                ie_pred = ie_model.predict_proba(x)
+                ie_pred = ie_pred[0][0]
+                IE = 'I' if ie_pred <= 0.5 else 'E'
 
-
-        filename = '../models/T_F.model'
-        model = pickle.load(open(filename, 'rb'))
-        tf_pred = model.predict_proba(x)
-        tf_pred = tf_pred[0][0]
-        TF = 'T' if tf_pred <= 0.5 else 'F'
+                sn_pred = sn_model.predict_proba(x)
+                sn_pred = sn_pred[0][0]
+                SN = 'S' if sn_pred <= 0.5 else 'N'
 
 
-        filename = '../models/J_P.model'
-        model = pickle.load(open(filename, 'rb'))
-        jp_pred = model.predict_proba(x)
-        jp_pred = jp_pred[0][0]
-        JP = 'J' if jp_pred <= 0.5 else 'P'
+                tf_pred = tf_model.predict_proba(x)
+                tf_pred = tf_pred[0][0]
+                TF = 'T' if tf_pred <= 0.5 else 'F'
 
-        mbti = {
-            'status': 'OK',
-            'mbti': {'psy_type': '{}{}{}{}'.format(IE, SN, TF, JP),
+
+                jp_pred = jp_model.predict_proba(x)
+                jp_pred = jp_pred[0][0]
+                JP = 'J' if jp_pred <= 0.5 else 'P'
+
+                mbti = {
+                    'psy_type': '{}{}{}{}'.format(IE, SN, TF, JP),
                      'I_E': ie_pred,
                      'S_N': sn_pred,
                      'T_F': tf_pred,
-                     'J_P': jp_pred}
-        }
+                     'J_P': jp_pred
+                }
+                results.append(mbti)
+            except Exception as e:
+                print(f'Skip {vector} because error {e}')
+        return results
 
-        return mbti
-
-    def get(self, imgname):
-        mbti = self.get_mbti(imgname)
+    def get(self, user_id):
+        mbti = self.get_mbti(user_id)
 
         if mbti != None:
             return mbti
@@ -201,99 +202,64 @@ class Extractor:
 
     def extract_folder(self, path):
         images = [f for f in listdir(path) if isfile(join(path, f))]
-        print ('Find images in folder: {}'.format(len(images)))
+        print('Find images in folder: {}'.format(len(images)))
 
-        try:
-            with open('csvs/processed_files.csv', 'r') as f:
-                processed_images = f.readlines()
-        except:
-            processed_images = []
-
-        print (processed_images)
-        print (images)
+        vectors = []
         for image in images:
-            if image not in processed_images:
-                self.extract_image(path, image)
+            try:
+                vector = self.extract_image(path, image)
+            except Exception as e:
+                print('GOT ERROR', e)
+            else:
+                vectors.append(vector)
+        return vectors
 
-        return
-
-    def extract_image(self, folder, img_path, save=True):
+    def extract_image(self, folder, img_path):
         image_feature_vector = []
         if folder:
             path = '{}/{}'.format(folder, img_path)
         else:
             path = img_path
 
-        print ('Process {}'.format(path))
+        print('Process {}'.format(path))
         # colors features
         colors = colorgram.extract(path, 6)
         colors_features = []
         for image_color in colors:
             colors_features.extend([image_color.rgb.r,image_color.rgb.g, image_color.rgb.b])
 
-        if save:
-            with open('csvs/color_features.csv', 'a') as f:
-                feature_str = ', '.join(str(x) for x in colors_features)
-                f.writelines(feature_str)
-                f.writelines('\n')
-        else:
-            image_feature_vector.extend(colors_features)
-
+        image_feature_vector.extend(colors_features)
 
         # colorfulness
         img = cv2.imread(path)
         img = imutils.resize(img, width=250)
         C = image_colorfulness(img)
 
-        if save:
-            with open('csvs/colorfulness_feature.csv', 'a') as f:
-                f.writelines(str(C))
-                f.writelines('\n')
-        else:
-            image_feature_vector.extend([C])
-
+        image_feature_vector.extend([C])
 
         # face detection
         img = cv2.imread(path, cv2.IMREAD_COLOR)
         imgtest1 = img.copy()
         imgtest = cv2.cvtColor(imgtest1, cv2.COLOR_BGR2GRAY)
-        facecascade = cv2.CascadeClassifier('../models/haarcascade_frontalface_default.xml')
-        eye_cascade = cv2.CascadeClassifier('../models/haarcascade_eye.xml')
 
         faces = facecascade.detectMultiScale(imgtest, scaleFactor=1.2, minNeighbors=5)
 
-        if save:
-            with open('csvs/face_feature.csv', 'a') as f:
-                f.writelines(str(len(faces)))
-                f.writelines('\n')
-        else:
-            image_feature_vector.extend([C])
+        image_feature_vector.extend([C])
 
-        texts = text_detect(path, '../models/frozen_east_text_detection.pb', 0.5, 320, 320)
-        if save:
-            with open('csvs/text_feature.csv', 'a') as f:
-                f.writelines('{}, {}'.format(str(texts[0]), str(texts[1])))
-                f.writelines('\n')
-        else:
-            image_feature_vector.extend([texts[0], texts[1]])
-
-        # with open('csvs/processed_files.csv', 'a') as f:
-        #    f.writelines(str(img_path))
-        #    f.writelines('\n')
-
-        if not save:
-            return image_feature_vector
+        texts = text_detect(path, 0.5, 320, 320)
+        image_feature_vector.extend([texts[0], texts[1]])
+        return image_feature_vector
 
 
 extractor = Extractor()
 
 if len(sys.argv) == 1 or sys.argv[1] not in ['prefetch', 'run', 'dev']:
-    print("Run {} prefetch|run", sys.argv[0])
+    print("Run {} prefetch|run".format(sys.argv[0]))
     sys.exit(1)
 elif sys.argv[1] == 'run':
     extractor = Extractor()
-    api.add_resource(ImagePath, "/image/<string:imgname>")
+    api.add_resource(ImagePath, "/image/<int:user_id>")
     serve(app, host='0.0.0.0', port=5000)
 elif sys.argv[1] == 'dev':
-    api.add_resource(ImagePath, "/image/<string:imgname>")
+    api.add_resource(ImagePath, "/image/<int:user_id>")
     app.run(host='0.0.0.0', port=5000, debug=True)
